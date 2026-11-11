@@ -1,4 +1,7 @@
+
 # Wallet Insights
+
+https://github.com/user-attachments/assets/e852e5ce-0fbc-4812-8a7c-d4da6eac1155
 
 An AI-powered Web3 sample app: connect a wallet, get a plain-English read of its on-chain
 activity written by Claude, and anchor a hash of that report in a smart contract so it can
