@@ -21,7 +21,7 @@ async def health():
     return {
         "ok": True,
         "chain_id": settings.chain_id,
-        "llm": f"claude:{settings.anthropic_model}" if settings.anthropic_api_key else "rules",
+        "llm": settings.llm_label,
         "history": bool(settings.etherscan_api_key),
     }
 

@@ -1,16 +1,19 @@
 """Turn a WalletSnapshot into a WalletInsight.
 
-Two paths:
-  * analyze_with_claude — the real thing. Uses Claude's tool-use so the model fills a
-    typed schema and we never parse free text.
+Three paths, tried in this order (see Settings.llm_label):
+  * analyze_with_claude — Anthropic API. Uses tool-use so the model fills a typed schema
+    and we never parse free text.
+  * analyze_with_ollama — a free local model via Ollama. Same prompt and the same JSON
+    schema, enforced through Ollama's `format` parameter.
   * analyze_with_rules — a small deterministic fallback so the whole app runs end to end
-    with no API key (and so tests are fast and offline).
+    with no model at all (and so tests are fast and offline).
 """
 
 from __future__ import annotations
 
 import json
 
+import httpx
 from anthropic import AsyncAnthropic
 
 from .config import settings
@@ -29,33 +32,37 @@ Risk scoring guide (0-100):
  81-100 act now (clear drainer/phishing pattern)
 Only flag what the data supports. Suggestions must be actions the owner can take."""
 
-# Claude fills this schema via tool-use; it mirrors WalletInsight minus generated_by.
+# One JSON schema shared by both model paths; mirrors WalletInsight minus generated_by.
+# tx_hash is a plain string (empty when not applicable) because some local models
+# reject union types like ["string", "null"].
+INSIGHT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "activity_overview": {"type": "string"},
+        "risk_score": {"type": "integer", "minimum": 0, "maximum": 100},
+        "flags": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "severity": {"type": "string", "enum": ["low", "medium", "high"]},
+                    "title": {"type": "string"},
+                    "detail": {"type": "string"},
+                    "tx_hash": {"type": "string"},
+                },
+                "required": ["severity", "title", "detail"],
+            },
+        },
+        "suggestions": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["summary", "activity_overview", "risk_score", "flags", "suggestions"],
+}
+
 INSIGHT_TOOL = {
     "name": "report_insight",
     "description": "Report the analysis of the wallet snapshot.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "summary": {"type": "string"},
-            "activity_overview": {"type": "string"},
-            "risk_score": {"type": "integer", "minimum": 0, "maximum": 100},
-            "flags": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "severity": {"type": "string", "enum": ["low", "medium", "high"]},
-                        "title": {"type": "string"},
-                        "detail": {"type": "string"},
-                        "tx_hash": {"type": ["string", "null"]},
-                    },
-                    "required": ["severity", "title", "detail"],
-                },
-            },
-            "suggestions": {"type": "array", "items": {"type": "string"}},
-        },
-        "required": ["summary", "activity_overview", "risk_score", "flags", "suggestions"],
-    },
+    "input_schema": INSIGHT_SCHEMA,
 }
 
 
@@ -88,6 +95,15 @@ def _snapshot_for_prompt(snapshot: WalletSnapshot) -> str:
     )
 
 
+def _finish(data: dict, generated_by: str) -> WalletInsight:
+    """Normalise model output into a WalletInsight."""
+    for flag in data.get("flags", []):
+        if not flag.get("tx_hash"):
+            flag["tx_hash"] = None  # schema says string; model may send "" — treat as absent
+    data["generated_by"] = generated_by
+    return WalletInsight.model_validate(data)
+
+
 async def analyze_with_claude(snapshot: WalletSnapshot) -> WalletInsight:
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     msg = await client.messages.create(
@@ -99,9 +115,44 @@ async def analyze_with_claude(snapshot: WalletSnapshot) -> WalletInsight:
         messages=[{"role": "user", "content": f"Wallet snapshot:\n{_snapshot_for_prompt(snapshot)}"}],
     )
     tool_use = next(b for b in msg.content if b.type == "tool_use")
-    data = dict(tool_use.input)
-    data["generated_by"] = f"claude:{settings.anthropic_model}"
-    return WalletInsight.model_validate(data)
+    return _finish(dict(tool_use.input), f"claude:{settings.anthropic_model}")
+
+
+async def analyze_with_ollama(snapshot: WalletSnapshot) -> WalletInsight:
+    """Same prompt and schema as the Claude path, served by a local Ollama model.
+
+    Ollama's `format` parameter accepts a JSON schema and constrains generation to it,
+    so the reply's `content` is a JSON string we can parse directly.
+    """
+    payload = {
+        "model": settings.ollama_model,
+        "stream": False,
+        "format": INSIGHT_SCHEMA,
+        "options": {"temperature": 0.2},
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"Wallet snapshot:\n{_snapshot_for_prompt(snapshot)}"},
+        ],
+    }
+    async with httpx.AsyncClient(timeout=settings.ollama_timeout_s) as client:
+        try:
+            r = await client.post(f"{settings.ollama_url}/api/chat", json=payload)
+        except httpx.ConnectError as e:
+            raise RuntimeError(
+                f"Could not reach Ollama at {settings.ollama_url}. Is the Ollama app running? "
+                f"(install from https://ollama.com, then `ollama pull {settings.ollama_model}`)"
+            ) from e
+        if r.status_code == 404:
+            raise RuntimeError(
+                f"Ollama has no model named '{settings.ollama_model}'. Run: ollama pull {settings.ollama_model}"
+            )
+        r.raise_for_status()
+    content = r.json()["message"]["content"]
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"Ollama returned non-JSON output: {content[:200]}") from e
+    return _finish(data, f"ollama:{settings.ollama_model}")
 
 
 def analyze_with_rules(snapshot: WalletSnapshot) -> WalletInsight:
@@ -151,7 +202,7 @@ def analyze_with_rules(snapshot: WalletSnapshot) -> WalletInsight:
             f"{len(outgoing)} outgoing ETH transfers, {len(failed)} failed."
         )
 
-    suggestions = ["Connect an LLM key (ANTHROPIC_API_KEY) for a narrative analysis."]
+    suggestions = ["Set ANTHROPIC_API_KEY or OLLAMA_ENABLED=true in .env for a narrative analysis."]
     if approvals:
         suggestions.append("Check your approvals at revoke.cash and revoke stale ones.")
     if snapshot.balance_eth < 0.01:
@@ -173,4 +224,6 @@ def analyze_with_rules(snapshot: WalletSnapshot) -> WalletInsight:
 async def analyze(snapshot: WalletSnapshot) -> WalletInsight:
     if settings.anthropic_api_key:
         return await analyze_with_claude(snapshot)
+    if settings.ollama_enabled:
+        return await analyze_with_ollama(snapshot)
     return analyze_with_rules(snapshot)

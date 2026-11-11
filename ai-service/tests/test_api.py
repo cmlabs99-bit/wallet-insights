@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -61,6 +63,35 @@ def test_rules_flag_approvals_and_failures():
     assert any("failed" in t for t in titles)
     assert any("approval" in t for t in titles)
     assert insight.risk_score > 20
+
+
+def test_ollama_path_parses_schema_constrained_json(monkeypatch):
+    """Exercise analyze_with_ollama against a fake Ollama server (no network)."""
+    import asyncio
+    import httpx
+    from app import llm
+
+    fake_reply = {
+        "summary": "Quiet wallet.", "activity_overview": "Nothing recent.",
+        "risk_score": 7, "suggestions": ["Nothing to do."],
+        "flags": [{"severity": "low", "title": "Dust", "detail": "tiny balance", "tx_hash": ""}],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/chat"
+        body = json.loads(request.content)
+        assert body["format"] == llm.INSIGHT_SCHEMA  # schema is enforced server-side
+        return httpx.Response(200, json={"message": {"role": "assistant", "content": json.dumps(fake_reply)}})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient",
+                        lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw))
+    monkeypatch.setattr(llm.settings, "ollama_model", "test-model")
+
+    insight = asyncio.run(llm.analyze_with_ollama(fake_snapshot()))
+    assert insight.generated_by == "ollama:test-model"
+    assert insight.risk_score == 7
+    assert insight.flags[0].tx_hash is None  # "" normalised to None
 
 
 def test_canonical_json_is_order_independent():
