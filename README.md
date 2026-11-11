@@ -1,7 +1,8 @@
-
 # Wallet Insights
 
 https://github.com/user-attachments/assets/e852e5ce-0fbc-4812-8a7c-d4da6eac1155
+
+![Wallet Insights demo — connect, analyze with a local LLM, save the report hash on-chain](docs/wallet-insights-demo.gif)
 
 An AI-powered Web3 sample app: connect a wallet, get a plain-English read of its on-chain
 activity written by Claude, and anchor a hash of that report in a smart contract so it can
@@ -20,19 +21,19 @@ be verified later.
 ```
 
 **Design rule that holds the whole thing together:** the AI service never touches a private
-key, and the chain never stores the report text. The service *reads* the chain and returns
-`report_json` + `report_hash` (keccak256 of the canonical JSON). The *wallet* signs the
+key, and the chain never stores the report text. The service _reads_ the chain and returns
+`report_json` + `report_hash` (keccak256 of the canonical JSON). The _wallet_ signs the
 `saveInsight(hash)` transaction in the browser. Anyone with the JSON can recompute the hash
 and compare it with what's on-chain.
 
 ## Folders
 
-| Folder        | Stack                                   | Purpose                                              |
-|---------------|-----------------------------------------|------------------------------------------------------|
-| `contracts/`  | Solidity 0.8.24, Hardhat, ethers v6     | `InsightRegistry` + tests + deploy script             |
-| `ai-service/` | Python 3.11+, FastAPI, Anthropic SDK    | Reads wallet data, asks Claude for a structured report |
-| `dashboard/`  | React 18, Vite, TypeScript, wagmi/viem  | Wallet connect, overview, AI panel, on-chain history   |
-| `shared/`     | JSON                                    | Contract ABI + deployed addresses (written by deploy)  |
+| Folder        | Stack                                  | Purpose                                                |
+| ------------- | -------------------------------------- | ------------------------------------------------------ |
+| `contracts/`  | Solidity 0.8.24, Hardhat, ethers v6    | `InsightRegistry` + tests + deploy script              |
+| `ai-service/` | Python 3.11+, FastAPI, Anthropic SDK   | Reads wallet data, asks Claude for a structured report |
+| `dashboard/`  | React 18, Vite, TypeScript, wagmi/viem | Wallet connect, overview, AI panel, on-chain history   |
+| `shared/`     | JSON                                   | Contract ABI + deployed addresses (written by deploy)  |
 
 ## Run it locally (all four parts)
 
@@ -74,7 +75,7 @@ uvicorn app.main:app --reload --port 8000
 # http://localhost:8000/docs for the interactive API
 ```
 
-Note: `RPC_URL`/`CHAIN_ID` in `.env` decide which chain the service *reads*. For the local
+Note: `RPC_URL`/`CHAIN_ID` in `.env` decide which chain the service _reads_. For the local
 Hardhat chain set `CHAIN_ID=31337` and `RPC_URL=http://127.0.0.1:8545` (Etherscan has no data
 for it, so leave `ETHERSCAN_API_KEY` empty). For Sepolia leave the defaults.
 
@@ -98,7 +99,7 @@ Connect → Overview loads → **Analyze this wallet** → **Save hash on-chain*
 ## Guided tour — read these in order
 
 1. **`contracts/contracts/InsightRegistry.sol`** (70 lines). One struct, one mapping, one event,
-   two custom errors. Note what is *not* stored: the report. Then read
+   two custom errors. Note what is _not_ stored: the report. Then read
    **`contracts/test/InsightRegistry.test.js`** — each test is one behaviour; the last one shows
    how custom errors are asserted.
 2. **`ai-service/app/schemas.py`** — the contract between every layer. The same shapes appear in
@@ -140,7 +141,7 @@ Connect → Overview loads → **Analyze this wallet** → **Save hash on-chain*
 - The service is read-only; the private key stays in the wallet. Never move signing server-side
   for a user-facing app.
 - `DEPLOYER_PRIVATE_KEY` is for a throwaway testnet account. The repo ignores `.env`.
-- The contract lets any address write to *its own* list only (`msg.sender`), so there is nothing
+- The contract lets any address write to _its own_ list only (`msg.sender`), so there is nothing
   to permission.
 - Prompt-injection surface: transaction data (e.g. token names, method names) reaches the LLM.
   The system prompt tells the model to describe, not act, and the model has no tools except the
