@@ -32,6 +32,8 @@ Risk scoring guide (0-100):
  81-100 act now (clear drainer/phishing pattern)
 Only flag what the data supports. Suggestions must be actions the owner can take.
 
+
+
 Facts you must respect:
 - All amounts are in ETH. Never write a dollar sign or convert to USD.
 - Chain IDs: 1 = Ethereum mainnet, 11155111 = Sepolia testnet, 31337 = local Hardhat
@@ -39,6 +41,7 @@ Facts you must respect:
 - If recent_transactions is empty and history_available is false, do not raise flags
   about missing transactions — say history was not fetched and score risk 0-10.
 - Keep summary to 2-3 sentences and activity_overview to 1-2. Do not repeat yourself.
+
 
 """
 
