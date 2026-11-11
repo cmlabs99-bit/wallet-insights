@@ -58,6 +58,7 @@ export function InsightPanel({ address, registry }: Props) {
     // replace the save function:
     const save = async (r: AnalyzeResponse) => {
         if (!registry) return;
+
         if (walletChainId !== chainId) {
             await switchChainAsync({ chainId }); // MetaMask prompts "Switch network"
         }

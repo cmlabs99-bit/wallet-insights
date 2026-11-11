@@ -10,7 +10,9 @@ import { hardhat } from "wagmi/chains";
 export default function App() {
     const { address, isConnected, chainId: walletChainId } = useAccount();
     const chainId = useChainId();
-    const wrongChain = isConnected && walletChainId !== chainId;
+    // Only flag a mismatch once wagmi actually knows the wallet's chain
+    const wrongChain =
+        isConnected && walletChainId !== undefined && walletChainId !== chainId;
 
     const registry = registryAddress(chainId);
     const { switchChain, isPending: isSwitching } = useSwitchChain();
@@ -58,6 +60,7 @@ export default function App() {
       </footer> */}
 
             <footer className="foot">
+                {/*
                 <span>
                     Chain {chainId}
                     {(wrongChain || !registry) && (
@@ -66,17 +69,17 @@ export default function App() {
                             <button
                                 className="btn ghost"
                                 onClick={() => switchChain({ chainId })}
-                                // onClick={() =>
-                                //     switchChain({ chainId: hardhat.id })
-                                // }
                                 disabled={isSwitching}
                             >
                                 {isSwitching
                                     ? "Switching…"
-                                    : "Switch to Hardhat (31337)"}
+                                    : `Switch to chain ${chainId}`}
                             </button>
                         </>
                     )}
+                </span> */}
+                <span>
+                    Chain {chainId} (wallet: {String(walletChainId)})
                 </span>
                 <span>
                     Registry:{" "}

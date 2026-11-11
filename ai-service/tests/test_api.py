@@ -25,6 +25,7 @@ def client(monkeypatch):
     monkeypatch.setattr(chain, "build_snapshot", _build)
     # No API key in tests → rules path
     monkeypatch.setattr(main.settings, "anthropic_api_key", "")
+    monkeypatch.setattr(main.settings, "ollama_enabled", False)
     return TestClient(main.app)
 
 

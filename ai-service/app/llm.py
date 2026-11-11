@@ -30,7 +30,17 @@ Risk scoring guide (0-100):
  21-50  something worth a look (repeated failed txs, many unknown contracts, dust)
  51-80  likely problem (approvals to unverified contracts, drained balance pattern)
  81-100 act now (clear drainer/phishing pattern)
-Only flag what the data supports. Suggestions must be actions the owner can take."""
+Only flag what the data supports. Suggestions must be actions the owner can take.
+
+Facts you must respect:
+- All amounts are in ETH. Never write a dollar sign or convert to USD.
+- Chain IDs: 1 = Ethereum mainnet, 11155111 = Sepolia testnet, 31337 = local Hardhat
+  development chain (test ETH, not real money). Name the chain correctly.
+- If recent_transactions is empty and history_available is false, do not raise flags
+  about missing transactions — say history was not fetched and score risk 0-10.
+- Keep summary to 2-3 sentences and activity_overview to 1-2. Do not repeat yourself.
+
+"""
 
 # One JSON schema shared by both model paths; mirrors WalletInsight minus generated_by.
 # tx_hash is a plain string (empty when not applicable) because some local models
